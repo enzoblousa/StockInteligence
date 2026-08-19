@@ -1,50 +1,52 @@
-# 04 — Contrato de API (visão de alto nível)
+# 04 — Contrato de API
 
-Status: **Rascunho** · Última revisão: 2026-08-19
+Status: **Aceito** · Última revisão: 2026-08-19
 
-Este documento fixa o **formato e as regras de acesso** dos endpoints do MVP antes da
-implementação (ADR-0008, contract-first). O YAML OpenAPI definitivo é gerado a partir das
-anotações do código durante o M0/M1 e passa a viver em `docs/spec/openapi.yaml`
-(commitado como artefato de referência, revisado em PR a cada mudança de contrato).
+Base path: `/api`. Sem autenticação no MVP (ver ADR-0004) — todo recurso de negócio é escopado
+por `tenantId` explícito na URL. Erros seguem RFC 7807 (`application/problem+json`, ver
+`03-architecture.md`). Fonte de verdade machine-readable é o OpenAPI publicado pelo backend em
+`/q/openapi` (ver ADR-0008) — esta tabela é o contrato de referência legível por humano.
 
-Prefixo base: `/api/v1`. Todas as respostas de erro em `application/problem+json` (RNF-9).
-Listagens sempre paginadas: `?page=0&size=20` (defaults), resposta com `content`, `page`,
-`size`, `totalElements`.
+## Lojas (`Tenant`)
 
-| Recurso | Método/rota | Papel mínimo | Observação |
-|---|---|---|---|
-| Produtos | `GET /products` | qualquer autenticado | paginado, filtros `q`, `categoryId` |
-| Produtos | `GET /products/{id}` | qualquer autenticado | |
-| Produtos | `POST /products` | `ADMIN` | |
-| Produtos | `PUT /products/{id}` | `ADMIN` | |
-| Produtos | `DELETE /products/{id}` | `ADMIN` | soft-delete (RF-CAT-3) |
-| Categorias | `GET/POST/PUT/DELETE /categories` | leitura: qualquer; escrita: `ADMIN` | |
-| Parceiros | `GET/POST/PUT /partners` | leitura: qualquer; escrita: `ADMIN` | filtro `role=SUPPLIER\|CUSTOMER` |
-| Saldo de estoque | `GET /inventory/{productId}` | qualquer autenticado | retorna `onHand`, `reserved`, `available` |
-| Movimentações | `GET /inventory/{productId}/movements` | qualquer autenticado | paginado, filtro por período/tipo |
-| Ajuste manual | `POST /inventory/{productId}/adjustments` | `ADMIN`, `ESTOQUISTA` | exige `reason` |
-| Pedido de compra | `POST /purchase-orders` | `ADMIN`, `ESTOQUISTA` | cria em `DRAFT` |
-| Pedido de compra | `POST /purchase-orders/{id}/confirm` | `ADMIN`, `ESTOQUISTA` | |
-| Pedido de compra | `POST /purchase-orders/{id}/receive` | `ADMIN`, `ESTOQUISTA` | gera `StockMovement` (idempotente) |
-| Pedido de compra | `POST /purchase-orders/{id}/cancel` | `ADMIN`, `ESTOQUISTA` | |
-| Pedido de compra | `GET /purchase-orders`, `GET /purchase-orders/{id}` | qualquer autenticado | |
-| Pedido de venda | `POST /sales-orders` | `ADMIN`, `VENDEDOR` | cria em `DRAFT` |
-| Pedido de venda | `POST /sales-orders/{id}/confirm` | `ADMIN`, `VENDEDOR` | reserva estoque; 409 se conflito/insuficiente |
-| Pedido de venda | `POST /sales-orders/{id}/invoice` | `ADMIN`, `VENDEDOR` | baixa estoque |
-| Pedido de venda | `POST /sales-orders/{id}/cancel` | `ADMIN`, `VENDEDOR` | |
-| Pedido de venda | `GET /sales-orders`, `GET /sales-orders/{id}` | qualquer autenticado | |
-| Alertas | `GET /alerts/low-stock` | qualquer autenticado | RF-ALR-1/2 |
-| Relatórios | `GET /reports/low-stock`, `GET /reports/movements` | qualquer autenticado | RF-REL-1/2 |
+| Método | Rota | Body | Sucesso | Erros |
+|---|---|---|---|---|
+| POST | `/api/tenants` | `{ nome }` | `201` `{ id, nome, criadoEm }` | `400` |
+| GET | `/api/tenants/{tenantId}` | — | `200` `{ id, nome, criadoEm }` | `404` |
 
-Erros de negócio conhecidos (mapeados para HTTP + `type` no problem detail):
+## Produtos
 
-| Situação | HTTP | `type` |
-|---|---|---|
-| Estoque insuficiente ao confirmar venda | 422 | `urn:stockmaster:insufficient-stock` |
-| Conflito de concorrência (versão de estoque) | 409 | `urn:stockmaster:stock-conflict` |
-| Transição de status inválida (ex: receber pedido cancelado) | 409 | `urn:stockmaster:invalid-transition` |
-| Documento (CPF/CNPJ) ou SKU duplicado | 409 | `urn:stockmaster:duplicate-key` |
-| Validação de campo (Bean Validation) | 400 | `urn:stockmaster:validation-error` |
+| Método | Rota | Body | Sucesso | Erros |
+|---|---|---|---|---|
+| POST | `/api/tenants/{tenantId}/produtos` | `{ sku, nome, unidadeMedida, estoqueMinimo, custoUnitario?, precoVenda? }` | `201` produto criado (`saldoAtual = 0`) | `400`, `404` (tenant), `409` (sku duplicado) |
+| GET | `/api/tenants/{tenantId}/produtos?lowStock=true&ativo=true` | — | `200` lista de produtos | `404` (tenant) |
+| GET | `/api/tenants/{tenantId}/produtos/{produtoId}` | — | `200` produto | `404` |
+| PATCH | `/api/tenants/{tenantId}/produtos/{produtoId}` | `{ nome?, estoqueMinimo?, custoUnitario?, precoVenda?, ativo? }` | `200` produto atualizado | `400`, `404` |
 
-Este documento é atualizado sempre que um endpoint muda de forma incompatível; o `openapi.yaml`
-gerado é a fonte definitiva de tipos, este markdown é a visão de leitura rápida + regras de acesso.
+Objeto `Produto` (resposta): `{ id, tenantId, sku, nome, unidadeMedida, custoUnitario, precoVenda,
+estoqueMinimo, saldoAtual, ativo, version }`. `PATCH` nunca aceita `saldoAtual` no body — é
+ignorado se enviado (saldo só muda via movimentação).
+
+## Movimentações de estoque
+
+| Método | Rota | Body | Sucesso | Erros |
+|---|---|---|---|---|
+| POST | `/api/tenants/{tenantId}/produtos/{produtoId}/movimentos` | `{ tipo: "ENTRADA"\|"SAIDA"\|"AJUSTE", quantidade, motivo? }` | `201` `{ id, tipo, quantidade, motivo, saldoResultante, criadoEm }` | `400`, `404` (produto), `422` (saldo insuficiente), `409` (conflito de concorrência) |
+| GET | `/api/tenants/{tenantId}/produtos/{produtoId}/movimentos?page=0&size=20` | — | `200` `{ items: [...], page, size, total }` (mais recente primeiro) | `404` |
+
+`motivo` é obrigatório quando `tipo = "AJUSTE"` (`400` se ausente). Em `SAIDA`/`ENTRADA`,
+`quantidade` deve ser `> 0`; em `AJUSTE`, `quantidade` é um delta com sinal.
+
+## Formato de erro (RFC 7807)
+
+```json
+{
+  "type": "https://stockmaster.dev/errors/insufficient-stock",
+  "title": "Saldo insuficiente",
+  "status": 422,
+  "detail": "Produto 'Camiseta P' tem saldo 3, saída de 5 unidades foi rejeitada.",
+  "instance": "/api/tenants/.../produtos/.../movimentos"
+}
+```
+
+Erros de validação (`400`) adicionam `"errors": [{ "field": "quantidade", "message": "deve ser maior que zero" }]`.

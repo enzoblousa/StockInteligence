@@ -1,88 +1,60 @@
-# 05 — Roadmap de Implementação
+# 05 — Roadmap
 
 Status: **Aceito** · Última revisão: 2026-08-19
 
-Ordem pensada para sempre ter algo executável/demonstrável ao final de cada marco. Cada marco,
-ao ser fechado, deve deixar a spec (`docs/spec/`) refletindo fielmente o que foi implementado
-(regra de reconciliação do `CLAUDE.md`).
+## M0 — Spec (concluído em 2026-08-19)
 
-## M0 — Fundação
+Visão, requisitos, modelo de domínio, arquitetura, contrato de API e ADRs 0001–0008. Base para
+todo trabalho de código a partir daqui (ver `CLAUDE.md`, fluxo SDD).
 
-- Scaffolding `backend/` (Quarkus, Maven, extensões: REST, Hibernate ORM Panache, JDBC Postgres,
-  Flyway, OIDC, SmallRye OpenAPI, Micrometer, logging JSON).
-- Scaffolding `frontend/` (Vite + React + TS + Tailwind + shadcn/ui, roteamento básico).
-- `docker-compose.yml` (Postgres + Keycloak + backend + frontend) para dev local.
-- Health checks (`/q/health`) e `GET /api/v1/ping` de sanidade.
-- CI (GitHub Actions): build + test de backend e frontend em cada PR.
-- Realm/clients/papéis do Keycloak exportados em `infra/keycloak/realm-export.json`.
+## M1 — Fundação do backend
 
-## M1 — Catálogo, Parceiros & Auth
+- Scaffold Quarkus/Maven (`backend/`).
+- Migrations Flyway: `tenants`, `produtos` (com `version`), `movimentos_estoque`.
+- Entidades de domínio + portas de repositório (`domain/`), sem dependência de framework.
+- Testes unitários puros das invariantes (saldo nunca negativo, cálculo de delta por tipo).
 
-- RF-CAT-1..4, RF-PAR-1..2 implementados fim a fim (API + tela de listagem/formulário no
-  frontend).
-- Login funcional via Keycloak no frontend; `@RolesAllowed` aplicado nos endpoints de escrita.
-- Migrations Flyway iniciais (`product`, `category`, `partner`).
+## M2 — Casos de uso + API
 
-## M2 — Núcleo de Estoque
+- `application/`: `TenantService`, `ProdutoService`, `MovimentoEstoqueService` (transação
+  descrita em `02-domain-model.md`).
+- `infrastructure/rest`: `TenantResource`, `ProdutoResource`, `MovimentoResource`, mapeamento
+  RFC 7807 (`03-architecture.md`).
+- Testes de integração com Testcontainers, incluindo o teste de concorrência (ADR-0006).
+- OpenAPI exposto em `/q/openapi`, validado manualmente contra `04-api-contract.md`.
 
-- `StockBalance`/`StockMovement` (RF-EST-1..5), incluindo ajuste manual.
-- `@Version` e teste de integração de concorrência (duas escritas simultâneas).
-- Tela de consulta de saldo + histórico de movimentações.
+## M3 — Frontend MVP
 
-## M3 — Compras
+- Scaffold Vite + React + TS (`frontend/`).
+- Client gerado via `openapi-typescript` a partir do OpenAPI do backend (ADR-0008).
+- Telas: seleção/criação de loja, lista de produtos (com filtro de estoque baixo), formulário de
+  produto, formulário de movimentação (tratando `422`/`409`), histórico de movimentações.
 
-- RF-CMP-1..4 fim a fim, incluindo geração de `StockMovement` ao receber.
-- Teste de integração compra→estoque, incluindo idempotência do recebimento.
+## M4 — Deploy em cloud
 
-## M4 — Vendas
+- Terraform (`infra/`): ECR, App Runner, RDS Postgres free tier, IAM/SSM (ADR-0007).
+- GitHub Actions: CI (build+test em todo push/PR) e workflow de deploy manual
+  (`workflow_dispatch`).
+- Frontend publicado na Vercel.
+- AWS Budgets com alerta; README documenta `terraform destroy` para desligar tudo entre demos.
 
-- RF-VND-1..5 fim a fim: confirmar (reserva), faturar (baixa), cancelar (libera reserva).
-- Teste de integração venda→estoque, incluindo o caso de estoque insuficiente e o caso de
-  concorrência (RF-VND-5).
+## M5 — Polimento de demo
 
-## M5 — Alertas & Relatórios
+- Script de seed com dados de exemplo (loja + produtos + movimentações).
+- README com passo a passo, URL pública, screenshots/GIF.
+- Texto curto ligando as decisões de arquitetura aos ADRs correspondentes, para leitura de
+  portfólio.
 
-- Evento `ProductLowStockReached` (RF-ALR-1) + endpoint de listagem (RF-ALR-2).
-- Notificação por e-mail (opcional, se houver tempo — senão fica documentado como pendente).
-- Relatórios RF-REL-1..3 (API + tela simples de dashboard no frontend).
+## Pós-MVP (direção declarada, não implementada agora)
 
-## M6 — Observabilidade & Deploy
+Ordem de prioridade — autenticação vem antes de qualquer feature de negócio nova, por causa do
+risco aceito no ADR-0004:
 
-- Métricas de negócio + tracing (RNF-4).
-- Infra AWS provisionada via Terraform (VPC/networking mínimo, RDS, App Runner, ECR, Secrets
-  Manager) — ver ADR-0009.
-- Pipeline de CD: build de imagem, push para ECR, deploy backend+Keycloak no AWS App Runner
-  (RDS compartilhado), deploy frontend no Vercel/Netlify.
-- Smoke test pós-deploy (script simples batendo nos health checks e num fluxo de leitura).
-- AWS Budgets com alerta de custo configurado; script/instrução de `terraform destroy` documentada
-  para desligar tudo entre demonstrações, se necessário.
-- README do projeto atualizado com link público, instruções de rodar localmente, e um diagrama
-  de arquitetura (reaproveitar `03-architecture.md`).
-
-## M7 — Stretch goals (fora do MVP, priorizar só se M0–M6 estiverem sólidos)
-
-- Multi-depósito e rastreio por lote/validade (exigiria revisar `02-domain-model.md`).
-- Recebimento parcial de pedido de compra (RF-CMP-5).
-- Mensageria assíncrona (Kafka/SmallRye Reactive Messaging) substituindo eventos in-process
-  (ADR-0006 já deixa a porta pronta para isso).
-- Fluxo de devolução de venda faturada (reverter estoque de forma auditável).
-- Build nativo (GraalVM) do backend.
-- Internacionalização.
-- Migração de App Runner para ECS Fargate + ALB + VPC própria, se quiser aprofundar a
-  demonstração de rede/IAM na AWS (não necessário para o objetivo do MVP).
-
-## M8 — IA & IoT (visão de futuro, não planejado em detalhe — ver `00-vision.md`)
-
-Só entra em detalhamento de requisitos (`RF-IA-*`/`RF-IOT-*`) se M0–M7 estiverem fechados e o
-projeto seguir ativo. Direção pretendida, sem compromisso de escopo/data:
-
-- Ingestão de eventos de leitores de código de barras/câmeras via AWS IoT Core, entrando no
-  domínio pela `InventoryPort` já existente (sem redesenhar `Inventory`).
-- Previsão de demanda / sugestão de ponto de reposição a partir do histórico de
-  `StockMovement` (candidato: job batch simples antes de qualquer modelo de ML custom).
-
-## Como usar este roadmap
-
-Ao começar um marco, abra uma issue/branch por item, referenciando o ID de requisito
-(`RF-CAT-1`, etc.). Ao terminar um marco, revise se algum RF/RNF precisou ser ajustado durante a
-implementação e atualize o spec correspondente antes de fechar.
+1. **Autenticação real** (usuário + papel por loja) — supersede ADR-0004; provavelmente API key
+   simples como passo intermediário antes de OIDC completo (ver alternativas do ADR-0004).
+2. **Pedidos multi-item** (compra/venda como documento com várias linhas, gerando várias
+   movimentações atomicamente) — evolução de `02-domain-model.md`.
+3. Notificação ativa de estoque baixo (email/webhook), hoje é só consulta (RF-10).
+4. Relatórios e exportação de dados.
+5. Revisitar ADR-0007 se o custo pós free-tier da AWS virar problema (candidata: Fly.io/Render +
+   Neon).

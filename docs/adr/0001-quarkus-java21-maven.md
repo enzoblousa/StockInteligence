@@ -1,27 +1,36 @@
-# ADR-0001: Backend em Java 21 + Quarkus 3 + Maven
+# ADR-0001: Backend em Java 21 + Quarkus + Maven
 
-Status: **Aceito** · Data: 2026-08-18
+Status: **Aceito** · Data: 2026-08-19
 
 ## Contexto
 
-Precisamos de um backend Java para um projeto de portfólio nível sênior, com boa DX, startup
-rápido para dev local/testes com Testcontainers, e ecossistema maduro de segurança/observabilidade.
+O MVP precisa de um backend JVM que (a) tenha bom tempo de startup e footprint de memória
+baixos — relevante para rodar em free tier de cloud (App Runner cobra por uso/memória) — e
+(b) sirva como peça central de demonstração de arquitetura para portfólio.
 
 ## Decisão
 
-Usar **Java 21** (LTS), **Quarkus 3.x** como framework, e **Maven** como build tool.
+- **Linguagem/runtime:** Java 21 (LTS), com virtual threads disponíveis para I/O-bound sem
+  complexidade de reativo explícito.
+- **Framework:** Quarkus 3.x — startup rápido, footprint baixo, extensões maduras para o que o
+  projeto precisa (RESTEasy Reactive/JAX-RS, Hibernate ORM + Panache, Flyway, SmallRye OpenAPI,
+  SmallRye JWT quando entrar auth no pós-MVP).
+- **Build:** Maven, módulo único (ver ADR-0002). Sem Gradle — Maven é suficiente para o escopo e
+  mais universalmente reconhecido.
 
 ## Alternativas consideradas
 
-- **Spring Boot**: ecossistema maior, mas Quarkus diferencia mais o portfólio (menos comum,
-  mostra adaptação) e tem startup/testes com Testcontainers mais rápidos via dev services.
-- **Gradle**: build mais flexível, porém Maven é o padrão mais visto em ambientes enterprise Java
-  e reduz atrito de quem for avaliar o projeto.
-- **Java 17**: também LTS, mas 21 traz virtual threads estáveis, úteis se o projeto evoluir para
-  cargas de I/O mais pesadas.
+- **Spring Boot:** stack mais usada no mercado, mas startup/footprint maiores e menos
+  diferenciação para um projeto de portfólio (é a escolha "óbvia"); Quarkus sinaliza
+  familiaridade com stack cloud-native mais atual.
+- **Micronaut:** objetivos parecidos com Quarkus (startup rápido, DI em compile-time), mas
+  ecossistema/comunidade menor — menos suporte disponível para um projeto solo.
+- **Node/NestJS ou outra stack não-JVM:** rejeitado porque o objetivo explícito do projeto é
+  demonstrar backend em Java.
 
 ## Consequências
 
-- Ganhamos Dev Services do Quarkus (Postgres/Keycloak sobem automaticamente em dev/test).
-- Equipe (mesmo que seja só o autor) precisa estar confortável com o modelo de extensões Quarkus.
-- Build nativo (GraalVM) fica disponível como stretch goal, não obrigatório no MVP.
+- Comunidade Quarkus é menor que a de Spring — menos respostas prontas em fóruns; compensado
+  pela documentação oficial ser boa.
+- Extensões Quarkus (Panache, SmallRye) impõem algumas convenções que a arquitetura (ADR-0002)
+  precisa respeitar sem deixar vazar Panache para a camada de domínio.

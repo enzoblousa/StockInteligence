@@ -1,27 +1,35 @@
-# ADR-0003: PostgreSQL + Flyway como camada de persistência
+# ADR-0003: PostgreSQL + Flyway
 
-Status: **Aceito** · Data: 2026-08-18
+Status: **Aceito** · Data: 2026-08-19
 
 ## Contexto
 
-Precisamos de um banco relacional com suporte maduro a transações, constraints, e controle de
-concorrência otimista (`@Version`) para o agregado `StockBalance` (RNF-1).
+O domínio exige consistência transacional forte (saldo de estoque nunca pode ficar negativo,
+concorrência precisa ser tratada explicitamente — ver ADR-0006) e tipos numéricos exatos para
+quantidade/valores monetários. O schema também precisa evoluir de forma rastreável desde o M1.
 
 ## Decisão
 
-**PostgreSQL** como banco primário, com **Flyway** para versionamento de schema. Nenhum ambiente
-além de testes unitários usa `hibernate.hbm2ddl.auto=update`/`create`.
+- **PostgreSQL** como banco relacional único do sistema.
+- **Flyway** para migrations versionadas em `backend/src/main/resources/db/migration`;
+  `hibernate.hbm2ddl` nunca é `update`/`create` fora de testes (ver `CLAUDE.md` regra 2).
+- Tipos: `NUMERIC`/`BIGINT` para quantidade e valores monetários (nunca `FLOAT`/`DOUBLE`),
+  mapeados para `BigDecimal`/`int` em Java (ver `CLAUDE.md` regra 4).
 
 ## Alternativas consideradas
 
-- **MySQL/MariaDB**: também viável, mas Postgres tem melhor suporte a tipos avançados (JSONB,
-  arrays) que podem ser úteis em relatórios futuros, e é o mais comum em vagas sênior que usam
-  Quarkus.
-- **Flyway vs Liquibase**: Flyway escolhido pela simplicidade de SQL puro versionado (mais fácil
-  de revisar em PR do que XML/YAML do Liquibase).
+- **MySQL:** também atenderia, mas Postgres tem melhor suporte em free tiers gerenciados
+  relevantes (RDS free tier, e alternativas como Neon/Supabase caso o ADR-0007 seja revisitado)
+  e semântica de `NUMERIC` mais previsível.
+- **MongoDB:** rejeitado — o domínio é fundamentalmente relacional e precisa de transações
+  ACID entre a atualização de saldo e a inserção do registro de movimentação (ver
+  `docs/spec/02-domain-model.md`).
+- **H2/banco embarcado em produção:** só usado em testes (via Quarkus Dev Services/Testcontainers
+  para Postgres real em teste de integração); nunca em produção.
 
 ## Consequências
 
-- Toda mudança de schema é um arquivo `V<N>__descricao.sql` versionado e revisado.
-- Dev local usa Dev Services do Quarkus (container Postgres efêmero); Testcontainers nos testes
-  de integração garante que a mesma engine roda em CI.
+- Toda mudança de schema passa por migration nova — nunca editar uma migration já aplicada em
+  qualquer ambiente compartilhado.
+- Dev local usa Quarkus Dev Services (Testcontainers) para subir Postgres automaticamente sem
+  exigir Docker Compose manual.

@@ -1,31 +1,40 @@
-# ADR-0008: API contract-first via OpenAPI, client TypeScript gerado
+# ADR-0008: Contrato de API como fonte de verdade (OpenAPI), client do frontend gerado
 
-Status: **Aceito** · Data: 2026-08-18
+Status: **Aceito** · Data: 2026-08-19
 
 ## Contexto
 
-Backend e frontend evoluem de forma desacoplada (ADR-0005). Sem um contrato explícito, é fácil o
-frontend divergir silenciosamente do formato real da API (RNF-7).
+O frontend só existe para consumir a API corretamente (ver ADR-0005). Escrever o client HTTP à
+mão convida a dessincronização silenciosa entre backend e frontend — exatamente o tipo de bug
+que este projeto quer evitar por princípio de engenharia (contrato explícito > convenção
+implícita).
 
 ## Decisão
 
-O backend expõe o contrato via **SmallRye OpenAPI** (anotações JAX-RS + `@Schema` onde necessário
-para nomes de domínio em português nos payloads, se aplicável). O frontend **gera** seu client
-TypeScript a partir desse contrato (`openapi-typescript` ou `orval`) como parte do pipeline de
-build/CI — nunca escreve tipos de request/response à mão.
+- `docs/spec/04-api-contract.md` é o **contrato legível por humano**, escrito/atualizado antes de
+  qualquer endpoint ser implementado (fluxo SDD, ver `CLAUDE.md`).
+- O backend expõe o contrato **machine-readable** via **SmallRye OpenAPI** (anotações JAX-RS
+  padrão do Quarkus), disponível em `/q/openapi` em qualquer ambiente (incluindo produção, sem
+  dado sensível nisso).
+- O **client TypeScript do frontend é gerado** a partir desse OpenAPI (`openapi-typescript`),
+  nunca escrito manualmente — divergência de contrato vira erro de compilação no frontend, não
+  bug silencioso em runtime.
+- Erros seguem RFC 7807 (`application/problem+json`) em toda a API, documentados no contrato.
 
 ## Alternativas consideradas
 
-- **Contrato escrito à mão em YAML antes do código (design-first puro)**: mais rigoroso, mas
-  adiciona um passo manual de sincronização; anotação no código Quarkus como fonte única é mais
-  pragmático para o tamanho do projeto, mantendo o benefício de ter o contrato publicado.
-- **Sem geração de client (frontend escreve fetch manual)**: mais rápido no curto prazo, mas é
-  exatamente a divergência de contrato que este ADR busca evitar.
+- **Contract-first "puro"** (escrever `openapi.yaml` primeiro, gerar stubs de servidor a partir
+  dele): mais rigoroso, mas Quarkus/SmallRye favorece o caminho inverso (anotações no código
+  geram o OpenAPI) e a ferramenta de geração de stubs JAX-RS a partir de YAML adiciona
+  complexidade de build não essencial para o tamanho do MVP. O contrato em Markdown
+  (`04-api-contract.md`) cumpre o papel de "escrito antes do código" sem essa ferramenta extra.
+- **Client do frontend escrito à mão:** rejeitado pelo motivo já descrito no Contexto.
+- **GraphQL:** rejeitado — REST é suficiente para o volume de casos de uso do MVP e mantém o
+  contrato mais simples de documentar/ler.
 
 ## Consequências
 
-- Pipeline de CI do frontend inclui um passo de "gerar client" a partir do OpenAPI publicado pelo
-  backend (via artefato de build ou contrato commitado em `docs/spec/openapi.yaml` — a definir na
-  implementação do M0).
-- Mudança de contrato que quebra compatibilidade é visível como diff no client gerado, revisável
-  em PR.
+- Qualquer mudança de endpoint precisa primeiro atualizar `04-api-contract.md`, depois as
+  anotações no backend, depois regenerar o client do frontend — nessa ordem (regra do SDD).
+- CI do frontend (M4) inclui um passo de regeneração do client a partir do OpenAPI publicado
+  pelo backend em build, para pegar drift automaticamente.

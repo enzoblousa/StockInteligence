@@ -2,104 +2,84 @@
 
 Status: **Aceito** · Última revisão: 2026-08-19
 
-Nomes de domínio em inglês no código (classes, campos), documentação em português. Isso evita
-mistura de idiomas dentro do código-fonte.
+## Bounded context
 
-## Bounded contexts
+Um único bounded context no MVP: **Estoque**. O domínio é pequeno o suficiente para não
+justificar múltiplos contextos ainda (ver ADR-0002).
 
-| Contexto | Responsabilidade | Módulo/pacote sugerido |
+## Agregados
+
+### `Tenant` (Loja) — raiz de agregado
+
+| Campo | Tipo | Regra |
 |---|---|---|
-| Catalog | Produtos e categorias | `catalog` |
-| Partners | Fornecedores e clientes | `partners` |
-| Inventory | Saldo e movimentações de estoque | `inventory` |
-| Purchasing | Pedidos de compra | `purchasing` |
-| Sales | Pedidos de venda | `sales` |
-| Notifications | Alertas (estoque baixo) | `notifications` |
-| Identity | Delegado ao Keycloak (fora do código da app) | — |
+| `id` | UUID | gerado no cadastro |
+| `nome` | String | obrigatório, não vazio |
+| `criadoEm` | timestamp | imutável |
 
-`Inventory` é o contexto central — `Purchasing` e `Sales` dependem dele, mas ele não depende de
-nenhum dos dois (evita acoplamento circular). Comunicação `Purchasing`/`Sales` → `Inventory` é
-feita via uma porta de aplicação (interface, `InventoryPort`), nunca acesso direto a repositório
-de outro módulo.
+### `Produto` — raiz de agregado
 
-> **Nota de futuro (não-MVP)**: essa mesma `InventoryPort` é o ponto onde um futuro adaptador de
-> IoT (leitor de código de barras, câmera) entraria como mais um chamador de `receive`/`adjust`,
-> igual a `Purchasing` hoje — não exige mudar `Inventory`. Mencionado aqui só para justificar por
-> que a porta é modelada como interface desde o MVP; nenhum código de IoT existe ainda (ver
-> `00-vision.md`, "Visão de futuro").
+| Campo | Tipo | Regra |
+|---|---|---|
+| `id` | UUID | gerado no cadastro |
+| `tenantId` | UUID | FK lógica para `Tenant`, imutável |
+| `sku` | String | único **dentro da loja** (constraint composta `tenantId+sku`) |
+| `nome` | String | obrigatório |
+| `unidadeMedida` | String | ex.: "un", "kg", "cx" |
+| `custoUnitario` | BigDecimal, nullable | opcional no MVP |
+| `precoVenda` | BigDecimal, nullable | opcional no MVP |
+| `estoqueMinimo` | Integer | `>= 0`, usado para alerta de estoque baixo |
+| `saldoAtual` | Integer | **invariante: nunca `< 0`**; só muda via `MovimentoEstoque` |
+| `ativo` | boolean | default `true` |
+| `version` | Long | controle de concorrência otimista (ADR-0006) |
 
-## Agregados e invariantes
+**Invariantes:**
+- `saldoAtual >= 0` sempre, em qualquer momento observável.
+- `sku` único por `tenantId`.
+- `saldoAtual` só é alterado como efeito colateral transacional de registrar um
+  `MovimentoEstoque` — nunca por uma edição direta de metadados (RF-04).
 
-### `Product` (Catalog) — aggregate root
+### `MovimentoEstoque` — registro imutável (ledger), não é agregado próprio no sentido de ter
+regra de negócio interna além da criação; referencia `Produto`.
 
-- Campos: `id`, `sku` (único), `name`, `categoryId`, `unitOfMeasure`, `costPrice` (BigDecimal),
-  `salePrice` (BigDecimal), `minimumStock` (int), `active` (bool).
-- Invariante: `costPrice >= 0`, `salePrice >= 0`, `minimumStock >= 0`.
-- Não pode ser removido fisicamente se possuir `StockMovement` associado — apenas `active = false`.
+| Campo | Tipo | Regra |
+|---|---|---|
+| `id` | UUID | gerado na criação |
+| `tenantId` | UUID | denormalizado do produto, para consulta/isolamento direto |
+| `produtoId` | UUID | FK para `Produto` |
+| `tipo` | Enum `ENTRADA \| SAIDA \| AJUSTE` | obrigatório |
+| `quantidade` | Integer | `ENTRADA`/`SAIDA`: `> 0`. `AJUSTE`: delta com sinal (pode ser negativo) |
+| `motivo` | String, nullable | obrigatório quando `tipo = AJUSTE`; opcional nos demais |
+| `criadoEm` | timestamp | gerado na criação |
 
-### `Partner` (Partners) — aggregate root
+**Invariantes:**
+- Imutável: sem endpoint de update/delete (RF-08).
+- Uma `SAIDA` (ou `AJUSTE` negativo) que resultaria em `saldoAtual < 0` no `Produto` é rejeitada
+  **antes** de qualquer escrita (nenhum efeito parcial).
 
-- Campos: `id`, `name`, `document` (CPF/CNPJ, único), `roles` (`SUPPLIER`, `CUSTOMER` — conjunto,
-  não exclusivo), `contactInfo`.
-- Invariante: `document` válido (dígito verificador) e único.
+## Serviço de domínio/aplicação: registrar movimentação
 
-### `StockBalance` (Inventory) — aggregate root
+Fluxo (camada `application`, ver `03-architecture.md`), dentro de **uma única transação**:
 
-- Campos: `productId` (chave), `quantityOnHand` (int), `quantityReserved` (int), `version` (long,
-  controle de concorrência otimista).
-- Derivado: `quantityAvailable = quantityOnHand - quantityReserved`.
-- Invariante: `quantityOnHand >= 0`, `quantityReserved >= 0`, `quantityReserved <= quantityOnHand`.
-- Toda mutação passa por um método de domínio (`receive`, `reserve`, `release`, `ship`, `adjust`)
-  que valida a invariante antes de aplicar — nunca setter público de quantidade.
+1. Carregar `Produto` (com `version` atual) por `tenantId` + `produtoId`.
+2. Calcular `novoSaldo = saldoAtual + delta(tipo, quantidade)`.
+3. Se `novoSaldo < 0` → rejeitar (erro de negócio, HTTP 422, ver `04-api-contract.md`), nada é
+   persistido.
+4. Persistir `Produto.saldoAtual = novoSaldo` (escrita otimista via `version`) e inserir o
+   `MovimentoEstoque` correspondente.
+5. Se a escrita do `Produto` falhar por conflito de versão (`OptimisticLockException`) →
+   propagar como conflito (HTTP 409) — nada é persistido, cliente decide se tenta de novo.
 
-### `StockMovement` (Inventory) — entidade imutável, parte do histórico
+## Consulta derivada: estoque baixo
 
-- Campos: `id`, `productId`, `type` (`PURCHASE_IN`, `SALE_OUT`, `ADJUSTMENT_POSITIVE`,
-  `ADJUSTMENT_NEGATIVE`), `quantity`, `resultingBalance`, `sourceDocumentType` (`PURCHASE_ORDER` |
-  `SALES_ORDER` | `MANUAL`), `sourceDocumentId` (nullable para ajuste manual), `reason`
-  (obrigatório se `MANUAL`), `performedBy` (subject do usuário Keycloak), `occurredAt`.
-- Nunca é alterado ou removido após criado (append-only).
+Não é uma entidade armazenada. É uma query: produtos de um `tenantId` onde
+`saldoAtual <= estoqueMinimo AND ativo = true` (RF-10, RF-05).
 
-### `PurchaseOrder` (Purchasing) — aggregate root
+## Extensões conceituais fora do MVP (não implementadas)
 
-- Campos: `id`, `supplierId`, `status` (`DRAFT`, `CONFIRMED`, `RECEIVED`, `CANCELLED`), `lines`
-  (`productId`, `quantity`, `unitCost`), `createdAt`, timestamps de transição.
-- Transições válidas: `DRAFT → CONFIRMED → RECEIVED`, `DRAFT|CONFIRMED → CANCELLED`. Qualquer
-  outra transição é rejeitada.
-- Ao `RECEIVED`: para cada linha, chama `Inventory.receive(productId, quantity, sourceDoc)` —
-  gera `StockMovement` tipo `PURCHASE_IN`.
-
-### `SalesOrder` (Sales) — aggregate root
-
-- Campos: `id`, `customerId`, `status` (`DRAFT`, `CONFIRMED`, `INVOICED`, `CANCELLED`), `lines`
-  (`productId`, `quantity`, `unitPrice`), timestamps de transição.
-- Transições válidas: `DRAFT → CONFIRMED → INVOICED`, `DRAFT|CONFIRMED → CANCELLED`.
-- Ao `CONFIRMED`: para cada linha, chama `Inventory.reserve(productId, quantity)` — falha o
-  pedido inteiro (nenhuma reserva parcial) se qualquer linha não tiver disponível suficiente.
-- Ao `INVOICED`: chama `Inventory.ship(productId, quantity)` — converte reserva em
-  `StockMovement` tipo `SALE_OUT`.
-- Ao `CANCELLED` a partir de `CONFIRMED`: chama `Inventory.release(productId, quantity)` para
-  cada linha.
-
-## Eventos de domínio (in-process no MVP; ver ADR-0006 sobre mensageria futura)
-
-- `StockMovementRecorded` — publicado após qualquer movimentação; consumido por
-  `Notifications` para checar limiar de estoque mínimo.
-- `ProductLowStockReached` — publicado por `Notifications` quando `quantityOnHand <=
-  minimumStock` (com de-duplicação: não repete alerta se já ativo).
-- `PurchaseOrderReceived` / `SalesOrderInvoiced` — úteis para futura auditoria/relatórios.
-
-No MVP estes eventos são consumidos de forma síncrona in-process (CDI `Event<T>`), documentando o
-ponto de extensão para trocar por mensageria assíncrona sem reescrever regra de negócio
-(ver ADR-0006).
-
-## Regras de negócio explícitas (para teste)
-
-1. Confirmar `SalesOrder` com qualquer linha sem estoque disponível → toda a operação falha
-   (transação atômica), erro de negócio `INSUFFICIENT_STOCK` com detalhe de qual produto.
-2. Duas confirmações concorrentes de `SalesOrder` disputando o último item: exatamente uma
-   sucede; a outra recebe conflito e deve poder ser re-tentada com estado atualizado.
-3. Cancelar `SalesOrder` já `INVOICED` é inválido (estoque já baixou, não pode "desfazer" sem um
-   fluxo de devolução — fora do MVP, listado como débito técnico).
-4. Receber `PurchaseOrder` gera exatamente uma `StockMovement` por linha, nunca duas (idempotência
-   se o endpoint for chamado 2x — ver `03-architecture.md`, seção de idempotência).
+- Evento de domínio explícito (`MovimentoRegistrado`) publicado num barramento — hoje o próprio
+  registro persistido de `MovimentoEstoque` já cumpre o papel de "fato ocorrido"; um barramento
+  de eventos só se justificaria se surgir um segundo consumidor (ex.: notificação assíncrona).
+- `Pedido` (compra/venda multi-item) como agregado que gera várias `MovimentoEstoque` de uma vez
+  — ver `05-roadmap.md`, pós-MVP.
+- `Usuario`/`Papel` vinculados a `Tenant` — entra junto com autenticação real (ADR-0004).
