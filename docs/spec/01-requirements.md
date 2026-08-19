@@ -1,9 +1,13 @@
 # 01 — Requisitos
 
-Status: **Aceito** · Última revisão: 2026-08-18
+Status: **Aceito** · Última revisão: 2026-08-19
 
 Convenção de ID: `RF-<módulo>-<n>` para funcional, `RNF-<n>` para não-funcional. Referencie estes
 IDs em commits/PRs/tarefas do roadmap para rastreabilidade.
+
+Requisitos de IA/IoT (visão de futuro descrita em `00-vision.md`) não têm IDs ainda — só ganham
+`RF-IA-*`/`RF-IOT-*` quando forem de fato planejados em um marco do roadmap (M8), para não
+inflar o MVP com requisitos especulativos.
 
 ## RF — Catálogo (CAT)
 

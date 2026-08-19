@@ -1,11 +1,13 @@
-# StockPilot — Guia do Projeto (Spec-Driven Development)
+# Stock Master — Guia do Projeto (Spec-Driven Development)
 
-> Nome de trabalho: **StockPilot** (placeholder — troque livremente em `docs/spec/00-vision.md`,
+> Nome de trabalho: **Stock Master** (troque livremente em `docs/spec/00-vision.md`,
 > é só atualizar o spec, não há acoplamento em código ainda).
 
-Sistema de controle de estoque com compras e vendas integradas ("mini ERP"), construído como
-projeto de portfólio nível sênior em **Java + Quarkus** (backend) e **React + TypeScript**
-(frontend).
+Controle de estoque inteligente para microempreendedores e lojistas de médio porte, com compras e
+vendas integradas, construído como projeto de portfólio nível sênior em **Java + Quarkus**
+(backend), **React + TypeScript** (frontend simples) e **AWS** (infraestrutura cloud). Visão de
+médio prazo: features de IA (previsão de demanda, sugestão de reposição) e integração com IoT
+(leitores de código de barras, câmeras para contagem automática) — ver `docs/spec/00-vision.md`.
 
 Este arquivo é a porta de entrada para qualquer pessoa (ou instância de Claude Code) que for
 trabalhar neste repositório. Leia isto antes de tocar em código.
@@ -77,16 +79,18 @@ Estas regras existem para manter o projeto em nível sênior de qualidade. Mudá
 - **Backend:** Java 21, Quarkus 3.x, Maven, Hibernate ORM + Panache, PostgreSQL, Flyway,
   SmallRye OpenAPI, Quarkus OIDC (Keycloak), Micrometer + OpenTelemetry.
 - **Frontend:** React 18 + TypeScript, Vite, TanStack Query, React Hook Form + Zod,
-  Tailwind + shadcn/ui, client OpenAPI-gerado, keycloak-js para login.
-- **Infra:** Docker Compose (dev local: Postgres + Keycloak), GitHub Actions (CI),
-  deploy em Fly.io (backend + Postgres) e Vercel/Netlify (frontend estático).
+  Tailwind + shadcn/ui, client OpenAPI-gerado, keycloak-js para login. Escopo deliberadamente
+  enxuto (poucas telas) — o investimento de profundidade é no backend.
+- **Infra:** Docker Compose (dev local: Postgres + Keycloak), GitHub Actions (CI), Terraform
+  (IaC), deploy em **AWS** (App Runner + RDS Postgres para backend/Keycloak) e Vercel/Netlify
+  (frontend estático) — ver ADR-0009.
 
 ## Layout do repositório (alvo, será criado nas próximas fases)
 
 ```
 /backend      -> serviço Quarkus (Maven)
 /frontend     -> SPA React + Vite
-/infra        -> docker-compose.yml, fly.toml, manifests de deploy
+/infra        -> docker-compose.yml, módulos Terraform (AWS), infra/keycloak/realm-export.json
 /.github      -> workflows de CI/CD
 /docs/spec    -> especificações vivas
 /docs/adr     -> Architecture Decision Records

@@ -1,6 +1,6 @@
 # 03 — Arquitetura
 
-Status: **Aceito** · Última revisão: 2026-08-18 · Decisões detalhadas em `docs/adr/`.
+Status: **Aceito** · Última revisão: 2026-08-19 · Decisões detalhadas em `docs/adr/`.
 
 ## Visão geral
 
@@ -10,16 +10,17 @@ flowchart LR
         SPA["React + TypeScript SPA"]
     end
 
-    subgraph Backend["Quarkus API (container)"]
+    subgraph Backend["Quarkus API (container, AWS App Runner)"]
         REST["REST Resources\n(inbound adapters)"]
         APP["Application layer\n(use cases)"]
         DOM["Domain layer\n(agregados, regras)"]
         REPO["Repositories\n(outbound adapters, Panache)"]
     end
 
-    KC["Keycloak\n(OIDC)"]
-    DB[("PostgreSQL")]
+    KC["Keycloak\n(OIDC, AWS App Runner)"]
+    DB[("PostgreSQL\n(AWS RDS)")]
     MAIL["Provedor de e-mail\n(alertas)"]
+    IOT["AWS IoT Core\n(futuro — M8, fora do MVP)"]
 
     SPA -- "HTTPS + Bearer token" --> REST
     SPA -- "login (redirect)" --> KC
@@ -27,7 +28,12 @@ flowchart LR
     APP --> REPO --> DB
     Backend -- "valida token" --> KC
     APP -. "evento estoque baixo" .-> MAIL
+    IOT -. "eventos de scanner/câmera\n(futuro, via InventoryPort)" .-> APP
 ```
+
+Infraestrutura provisionada em AWS via Terraform (ADR-0009); a caixa `IOT` é apenas direção
+declarada (ver `00-vision.md`, "Visão de futuro" e `02-domain-model.md`), sem implementação no
+MVP.
 
 ## Estilo arquitetural: monólito modular + hexagonal (ver ADR-0002)
 
@@ -36,7 +42,7 @@ Um único serviço deployável (`backend`), mas internamente organizado por **m�
 módulo por **camada**:
 
 ```
-backend/src/main/java/com/stockpilot/
+backend/src/main/java/com/stockmaster/
   catalog/
     domain/          -> Product, regras, interfaces de repositório (portas)
     application/     -> use cases (ex: CreateProductUseCase), orquestra domínio + portas
@@ -104,9 +110,16 @@ deixa claro onde partir em serviços depois.
 |---|---|---|
 | Dev local | Docker Compose (Postgres, Keycloak, backend, frontend) | Onboarding em um comando |
 | CI | GitHub Actions | Build/test backend e frontend, gate de PR |
-| Deploy backend | Fly.io (container) + Postgres gerenciado (Fly Postgres ou Neon) | Simples, barato, suporta container Quarkus |
-| Deploy frontend | Vercel ou Netlify (estático) | CDN, preview deploys por PR |
-| Deploy Keycloak | Container próprio no Fly.io | Revisar custo/complexidade — ver ADR-0007 |
+| IaC | Terraform | Infra AWS reprodutível a partir de código, revisável em PR |
+| Deploy backend | AWS App Runner (container, a partir de imagem no ECR) | Container Quarkus, HTTPS/scale gerenciados, sem VPC manual |
+| Banco | AWS RDS PostgreSQL (free tier) | Suporte robusto a `@Version`/locks; caminho de upgrade p/ Aurora Serverless v2 |
+| Deploy Keycloak | Container próprio no AWS App Runner (mesma instância RDS, schema separado) | Reaproveita infra já provisionada, evita 2º banco pago |
+| Deploy frontend | Vercel ou Netlify (estático) | CDN, preview deploys por PR; mantido fora da AWS de propósito (ver ADR-0009) |
+| Segredos | AWS Secrets Manager / SSM Parameter Store | Nunca em variável de ambiente commitada (constituição, regra 8) |
+| Custo | AWS Budgets com alerta + `terraform destroy` documentado | Projeto de portfólio não pode gerar conta surpresa |
+
+Decisão completa, alternativas consideradas (Fly.io, Render, Cloud Run) e consequências em
+**ADR-0009** (supersede ADR-0007).
 
 ## Cross-cutting concerns
 
@@ -145,6 +158,9 @@ deixa claro onde partir em serviços depois.
 - Tracing distribuído (OpenTelemetry) do request HTTP até a query SQL — útil para depurar
   contenção de concorrência em produção.
 - Logs em JSON com `traceId`/`spanId` correlacionados automaticamente pelo Quarkus.
+- Em produção (AWS), logs/métricas/traces são coletados via App Runner → CloudWatch Logs por
+  padrão; ADOT (AWS Distro for OpenTelemetry) como evolução para enviar traces a X-Ray, se o
+  tempo do projeto permitir (não bloqueia M6 — ver roadmap).
 
 ## Segurança
 

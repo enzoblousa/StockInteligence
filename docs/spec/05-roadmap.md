@@ -1,6 +1,6 @@
 # 05 — Roadmap de Implementação
 
-Status: **Aceito** · Última revisão: 2026-08-18
+Status: **Aceito** · Última revisão: 2026-08-19
 
 Ordem pensada para sempre ter algo executável/demonstrável ao final de cada marco. Cada marco,
 ao ser fechado, deve deixar a spec (`docs/spec/`) refletindo fielmente o que foi implementado
@@ -49,9 +49,13 @@ ao ser fechado, deve deixar a spec (`docs/spec/`) refletindo fielmente o que foi
 ## M6 — Observabilidade & Deploy
 
 - Métricas de negócio + tracing (RNF-4).
-- Pipeline de CD: build de imagem, deploy backend+Postgres+Keycloak no Fly.io (ADR-0007), deploy
-  frontend no Vercel/Netlify.
+- Infra AWS provisionada via Terraform (VPC/networking mínimo, RDS, App Runner, ECR, Secrets
+  Manager) — ver ADR-0009.
+- Pipeline de CD: build de imagem, push para ECR, deploy backend+Keycloak no AWS App Runner
+  (RDS compartilhado), deploy frontend no Vercel/Netlify.
 - Smoke test pós-deploy (script simples batendo nos health checks e num fluxo de leitura).
+- AWS Budgets com alerta de custo configurado; script/instrução de `terraform destroy` documentada
+  para desligar tudo entre demonstrações, se necessário.
 - README do projeto atualizado com link público, instruções de rodar localmente, e um diagrama
   de arquitetura (reaproveitar `03-architecture.md`).
 
@@ -64,6 +68,18 @@ ao ser fechado, deve deixar a spec (`docs/spec/`) refletindo fielmente o que foi
 - Fluxo de devolução de venda faturada (reverter estoque de forma auditável).
 - Build nativo (GraalVM) do backend.
 - Internacionalização.
+- Migração de App Runner para ECS Fargate + ALB + VPC própria, se quiser aprofundar a
+  demonstração de rede/IAM na AWS (não necessário para o objetivo do MVP).
+
+## M8 — IA & IoT (visão de futuro, não planejado em detalhe — ver `00-vision.md`)
+
+Só entra em detalhamento de requisitos (`RF-IA-*`/`RF-IOT-*`) se M0–M7 estiverem fechados e o
+projeto seguir ativo. Direção pretendida, sem compromisso de escopo/data:
+
+- Ingestão de eventos de leitores de código de barras/câmeras via AWS IoT Core, entrando no
+  domínio pela `InventoryPort` já existente (sem redesenhar `Inventory`).
+- Previsão de demanda / sugestão de ponto de reposição a partir do histórico de
+  `StockMovement` (candidato: job batch simples antes de qualquer modelo de ML custom).
 
 ## Como usar este roadmap
 

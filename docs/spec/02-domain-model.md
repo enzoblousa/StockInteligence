@@ -1,6 +1,6 @@
 # 02 — Modelo de Domínio
 
-Status: **Aceito** · Última revisão: 2026-08-18
+Status: **Aceito** · Última revisão: 2026-08-19
 
 Nomes de domínio em inglês no código (classes, campos), documentação em português. Isso evita
 mistura de idiomas dentro do código-fonte.
@@ -19,7 +19,14 @@ mistura de idiomas dentro do código-fonte.
 
 `Inventory` é o contexto central — `Purchasing` e `Sales` dependem dele, mas ele não depende de
 nenhum dos dois (evita acoplamento circular). Comunicação `Purchasing`/`Sales` → `Inventory` é
-feita via uma porta de aplicação (interface), nunca acesso direto a repositório de outro módulo.
+feita via uma porta de aplicação (interface, `InventoryPort`), nunca acesso direto a repositório
+de outro módulo.
+
+> **Nota de futuro (não-MVP)**: essa mesma `InventoryPort` é o ponto onde um futuro adaptador de
+> IoT (leitor de código de barras, câmera) entraria como mais um chamador de `receive`/`adjust`,
+> igual a `Purchasing` hoje — não exige mudar `Inventory`. Mencionado aqui só para justificar por
+> que a porta é modelada como interface desde o MVP; nenhum código de IoT existe ainda (ver
+> `00-vision.md`, "Visão de futuro").
 
 ## Agregados e invariantes
 
