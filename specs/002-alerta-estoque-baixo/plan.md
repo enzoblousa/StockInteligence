@@ -221,6 +221,10 @@ configurado — mesmo padrão zero-config já usado pelo PostgreSQL.
 
 ## Quickstart
 
+> Para o passo a passo completo de como ver e testar a mensageria (testes
+> automatizados, fluxo end-to-end via HTTP e inspeção da mensagem crua no
+> tópico Kafka), ver `testando-mensageria.md`.
+
 ```bash
 ./mvnw quarkus:dev
 ```
