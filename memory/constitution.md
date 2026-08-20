@@ -1,6 +1,6 @@
 # Constitution — StockInteligence
 
-**Versão:** 2.2.0
+**Versão:** 2.2.1
 **Ratificada em:** 2026-08-20
 **Última alteração:** 2026-08-20
 
@@ -166,6 +166,9 @@ infrastructure/
   adapter/out/persistence/
     write/               # implementações de repositório (agregados)
     read/                # implementações de query (projeções/DTO)
+  adapter/out/messaging/  # publishers/consumers de mensageria externa
+                          # (Kafka etc.), só quando uma spec concreta
+                          # exigir (Princípio VI)
   config/                # configuração específica de framework
 ```
 
@@ -245,6 +248,10 @@ conformidade com os seis princípios acima antes de detalhar o design técnico.
 
 ## Histórico de versões
 
+- **2.2.1** (2026-08-20) — clarificação de redação: adicionado
+  `adapter/out/messaging/` ao diagrama de convenção de pacotes, refletindo
+  o primeiro uso real de mensageria externa (`specs/002-alerta-estoque-baixo`),
+  já permitido pelos Princípios I e VI sem alteração de regra.
 - **2.2.0** (2026-08-20) — adicionada seção Frontend: SPA React 18 + Vite +
   JavaScript + Axios + React Router + Bootstrap, com convenções próprias
   (client HTTP centralizado, camada de serviço, tratamento uniforme de

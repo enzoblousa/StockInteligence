@@ -44,9 +44,39 @@ lista deve ser justificada em `research.md` da feature que a motivou.
 Nenhuma extensão adicional: eventos de domínio são publicados/observados via
 CDI (`jakarta.enterprise.event.Event<T>` / `@Observes`), já disponível pela
 extensão núcleo `quarkus-arc` (presente em todo projeto Quarkus, não listada
-à parte). Mensageria externa (Kafka, RabbitMQ via `quarkus-messaging-*`) só
-entra se uma spec futura exigir integração assíncrona entre bounded
-contexts — não faz parte do MVP.
+à parte). Primeiro uso real: `EstoqueBaixoAtingido`
+(`specs/002-alerta-estoque-baixo`), publicado in-process pelo
+`CommandHandler` de saída de estoque e observado pelo publisher Kafka
+descrito na seção seguinte.
+
+## Mensageria — publicação assíncrona (`infrastructure/adapter/out/messaging`)
+
+| Extensão | Artifact | Papel |
+|---|---|---|
+| SmallRye Reactive Messaging — Kafka | `io.quarkus:quarkus-messaging-kafka` | Publica eventos de domínio relevantes para consumidores externos ao processo, via tópicos Kafka. Introduzida em `specs/002-alerta-estoque-baixo` — não especulativa (Princípio VI): a spec exige que o alerta de estoque baixo seja publicado para consumo fora deste bounded context. |
+
+**Papel do publisher:** `EstoqueBaixoAtingidoKafkaPublisher` observa o
+Domain Event `EstoqueBaixoAtingido` com
+`@Observes(during = TransactionPhase.AFTER_SUCCESS)` — só publica no Kafka
+depois que a transação que originou o evento commitou, evitando publicar
+alertas de operações revertidas. Publica no tópico
+**`estoque.baixo-atingido`**, canal `estoque-baixo-atingido`
+(`mp.messaging.outgoing.estoque-baixo-atingido`).
+
+**Dev Services:** em dev/test, o Quarkus sobe um broker (Redpanda)
+automaticamente ao detectar `quarkus-messaging-kafka` no classpath sem
+`kafka.bootstrap.servers` configurado — mesmo padrão zero-config do
+PostgreSQL. Em produção, configurar via `KAFKA_BOOTSTRAP_SERVERS` (padrão
+do datasource, ver `application.properties`).
+
+**Limitação conhecida:** não é um Transactional Outbox completo — não há
+tabela de outbox nem garantia de dual-write entre o commit do PostgreSQL e
+a publicação no Kafka. Aceitável para o MVP; evolução futura se a
+confiabilidade de entrega virar requisito de negócio.
+
+**Testes:** `%test` troca o conector `smallrye-kafka` por `smallrye-in-memory`
+(`smallrye-reactive-messaging-in-memory`), permitindo testar a semântica de
+`TransactionPhase.AFTER_SUCCESS` sem depender de um broker real.
 
 ## Observabilidade
 
@@ -85,6 +115,7 @@ hibernate-orm-panache
 jdbc-postgresql
 flyway
 smallrye-health
+messaging-kafka
 ```
 
 (`arc` é incluída automaticamente por ser núcleo do Quarkus.)
