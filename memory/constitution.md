@@ -1,6 +1,6 @@
 # Constitution — StockInteligence
 
-**Versão:** 2.1.1
+**Versão:** 2.2.0
 **Ratificada em:** 2026-08-20
 **Última alteração:** 2026-08-20
 
@@ -171,6 +171,44 @@ infrastructure/
 
 ---
 
+## Frontend
+
+O frontend é uma SPA separada do backend (projeto Node/Vite próprio, fora do
+módulo Maven), que consome a API REST documentada em `/q/openapi`. Não segue
+a arquitetura DDD/CQRS dos Princípios I-VI — é tratado com convenções
+próprias, proporcionais ao seu escopo (painel CRUD sobre a API já pronta).
+
+### Stack
+
+| Item | Decisão | Observação |
+|---|---|---|
+| Linguagem | JavaScript (ES2022+) | Sem TypeScript por decisão deliberada — nível júnior, foco em fundamentos. Evolução natural para TS pode ser revisitada depois do MVP. |
+| Build | Vite | Padrão de fato para SPA React hoje; dev server rápido. |
+| Framework UI | React 18 | Stack mais demandada em vagas júnior de frontend/fullstack. |
+| Roteamento | React Router | Rotas simples: listagem, novo produto, editar produto. |
+| HTTP client | Axios | API mais simples que `fetch` puro para tratamento de erro/interceptors. |
+| Estilo | Bootstrap / React-Bootstrap | Componentes prontos (tabela, formulário, alerta) sem exigir CSS avançado. |
+| Gerenciamento de estado | Nenhuma lib — `useState`/`useEffect` nativos | Sem Redux/Zustand/TanStack Query enquanto o escopo não justificar (mesmo espírito do Princípio VI). |
+
+### Convenções
+
+- Um único client Axios centralizado (`src/api/client.js`), com `baseURL`
+  vinda de variável de ambiente (`VITE_API_BASE_URL`) — nunca hardcoded em
+  componentes.
+- Toda chamada à API passa por uma camada de serviço
+  (`src/api/produtoService.js`); nenhum componente chama Axios diretamente —
+  mesmo raciocínio do backend de não misturar infraestrutura com
+  apresentação.
+- Erros de negócio do backend (`400`/`404`/`409`, corpo `{ mensagem }`) são
+  capturados nessa camada de serviço e propagados de forma uniforme para a
+  UI exibir via um componente de alerta reutilizável — nunca `try/catch`
+  duplicado em cada componente.
+- Componentes organizados por tela (`src/pages/`) + componentes
+  reutilizáveis (`src/components/`) — sem abstração prematura de design
+  system.
+
+---
+
 ## Fluxo de Desenvolvimento (Spec-Driven Development)
 
 1. **`constitution.md`** (este documento) — princípios do projeto, alterado
@@ -207,6 +245,10 @@ conformidade com os seis princípios acima antes de detalhar o design técnico.
 
 ## Histórico de versões
 
+- **2.2.0** (2026-08-20) — adicionada seção Frontend: SPA React 18 + Vite +
+  JavaScript + Axios + React Router + Bootstrap, com convenções próprias
+  (client HTTP centralizado, camada de serviço, tratamento uniforme de
+  erro). Não segue os Princípios I-VI (exclusivos do backend DDD/CQRS).
 - **2.1.1** (2026-08-20) — Princípio V detalhado com regra de "uma camada
   dona por regra de negócio", evitando cobertura duplicada entre domínio,
   handler e testes de integração. Divisão de responsabilidade em
