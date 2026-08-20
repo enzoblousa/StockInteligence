@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: enzoblousa-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          # Endereço do registry interno do OpenShift + namespace + ImageStream:tag.
+          # Confirmado depois do primeiro build (ver README, passo "Build do backend").
+          image: image-registry.openshift-image-registry.svc:5000/enzoblousa-dev/backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            # Usuário/senha vêm do MESMO Secret do Postgres (evita duas
+            # fontes de verdade pra senha) — só o nome da chave muda de
+            # POSTGRESQL_USER pra DB_USERNAME, que é o nome que
+            # application.properties (%prod) já espera.
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: POSTGRESQL_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: POSTGRESQL_PASSWORD
+            # "postgresql" é o nome do Service (04-postgresql-service.yaml);
+            # "stockinteligence" precisa bater com POSTGRESQL_DATABASE do Secret.
+            - name: DB_URL
+              value: "jdbc:postgresql://postgresql:5432/stockinteligence"
+            # "kafka" é o nome do Service do Kafka (06-kafka-service.yaml), porta 9092.
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20

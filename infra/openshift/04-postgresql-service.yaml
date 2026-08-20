@@ -1,0 +1,15 @@
+# Service = um endereço de rede interno e ESTÁVEL pros outros pods acharem
+# o Postgres, mesmo que o pod reinicie e ganhe um IP interno novo. O
+# backend vai usar "postgresql:5432" como host:porta de conexão — o nome
+# do Service funciona como um nome de DNS dentro do cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: enzoblousa-dev
+spec:
+  selector:
+    app: postgresql   # rotea tráfego pra qualquer pod com este label — é assim que o Service "acha" o Deployment
+  ports:
+    - port: 5432
+      targetPort: 5432

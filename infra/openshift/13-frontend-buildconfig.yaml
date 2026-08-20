@@ -1,0 +1,23 @@
+# Mesmo padrão do backend (08-backend-buildconfig.yaml): Binary Build com
+# estratégia Docker. Aqui o motivo de usar Binary em vez de Git é outro:
+# o build precisa do frontend/.env.production já presente no diretório
+# enviado (é lido pelo `npm run build` dentro do Dockerfile) — um build a
+# partir do Git funcionaria também, já que .env.production é commitado,
+# mas manter o mesmo padrão Binary dos dois componentes simplifica o
+# fluxo de trabalho (um único jeito de fazer deploy pros dois).
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: frontend
+  namespace: enzoblousa-dev
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile   # na raiz do que for enviado com --from-dir=frontend
+  output:
+    to:
+      kind: ImageStreamTag
+      name: frontend:latest

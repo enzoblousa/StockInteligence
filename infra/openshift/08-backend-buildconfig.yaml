@@ -1,0 +1,26 @@
+# BuildConfig = a "receita de build". Aqui usamos:
+# - source.type: Binary -> o conteúdo do build vem do SEU computador (via
+#   `oc start-build --from-dir=backend`), não de um repositório Git. Isso é
+#   necessário porque backend/src/main/docker/Dockerfile.jvm espera
+#   encontrar target/quarkus-app/ JÁ COMPILADO — ele não roda "mvn package"
+#   sozinho. Um build direto do Git clonaria só o código-fonte, sem esse
+#   artefato, e falharia.
+# - strategy.type: Docker -> o cluster roda literalmente um `docker build`
+#   usando o Dockerfile apontado abaixo, sobre o conteúdo enviado.
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: backend
+  namespace: enzoblousa-dev
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      # Caminho relativo à raiz do que for enviado com --from-dir=backend
+      dockerfilePath: src/main/docker/Dockerfile.jvm
+  output:
+    to:
+      kind: ImageStreamTag
+      name: backend:latest

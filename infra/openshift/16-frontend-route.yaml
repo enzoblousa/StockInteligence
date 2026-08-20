@@ -1,0 +1,19 @@
+# Mesmo padrão da Route do backend (11-backend-route.yaml). O nome "frontend"
+# aqui determina o host gerado: frontend-enzoblousa-dev.apps.<cluster>...
+# — é esse valor previsto que já está em frontend/.env.production e no CORS
+# do backend (application.properties). Confirme depois de criada com:
+#   oc get route frontend -o jsonpath='{.spec.host}'
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: frontend
+  namespace: enzoblousa-dev
+spec:
+  to:
+    kind: Service
+    name: frontend
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

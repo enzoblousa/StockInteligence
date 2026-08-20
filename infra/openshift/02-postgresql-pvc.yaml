@@ -1,0 +1,19 @@
+# PersistentVolumeClaim (PVC) = um "pedido" de espaço em disco que sobrevive
+# mesmo se o container/pod reiniciar. Sem isso, os dados do Postgres
+# desapareceriam sempre que o pod fosse reciclado — e o Developer Sandbox
+# recicla pods automaticamente depois de ~12h rodando (comportamento normal
+# da plataforma, não é falha).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-data
+  namespace: enzoblousa-dev
+spec:
+  accessModes:
+    - ReadWriteOnce   # um único pod escreve por vez — suficiente aqui (só 1 réplica do Postgres)
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName omitido de propósito: deixamos o cluster escolher a
+  # classe padrão do namespace, em vez de supor um nome. Rode
+  # `oc get storageclass` se quiser ver qual está sendo usada.

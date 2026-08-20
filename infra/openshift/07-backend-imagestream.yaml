@@ -1,0 +1,8 @@
+# ImageStream = a "prateleira" interna do OpenShift onde a imagem Docker
+# construída pelo BuildConfig (próximo arquivo) vai ficar guardada — usa o
+# registry interno do próprio cluster, não é Docker Hub nem Quay.
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: backend
+  namespace: enzoblousa-dev

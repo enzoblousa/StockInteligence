@@ -1,0 +1,56 @@
+# Deployment = a "receita" que diz ao OpenShift: "quero N cópias deste
+# container rodando sempre; se uma morrer, suba outra no lugar".
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: enzoblousa-dev
+spec:
+  replicas: 1   # um banco de dados só pode ter 1 réplica com este tipo de volume (ReadWriteOnce)
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      # Sem "securityContext.runAsUser" aqui — de propósito. O OpenShift
+      # atribui um UID arbitrário automaticamente a cada pod (regra de
+      # segurança padrão, chamada de SCC "restricted"), e a imagem abaixo
+      # (mantida pela Red Hat, projeto sclorg) foi desenhada especificamente
+      # pra funcionar com qualquer UID que o cluster atribuir — ao
+      # contrário da imagem oficial "postgres" do Docker Hub, que espera
+      # rodar com um usuário fixo e não é garantida funcionar aqui.
+      containers:
+        - name: postgresql
+          image: quay.io/sclorg/postgresql-16-c9s:latest
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgresql-credentials
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgsql/data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+            periodSeconds: 20
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgresql-data

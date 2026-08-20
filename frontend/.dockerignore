@@ -1,0 +1,7 @@
+# Evita enviar isso no Binary Build (`oc start-build --from-dir=frontend`) —
+# node_modules é reinstalado do zero dentro do Dockerfile (`npm ci`), e
+# dist/ é regerado pelo próprio build; mandar essas pastas locais só deixa
+# o upload mais lento sem nenhum benefício.
+node_modules
+dist
+.git

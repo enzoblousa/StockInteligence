@@ -1,0 +1,22 @@
+# Route = exposição pública HTTPS (isso é um recurso específico do
+# OpenShift, não existe em Kubernetes puro — lá se usaria um Ingress).
+# termination: edge = o TLS "termina" na borda do cluster, usando o
+# certificado wildcard que o próprio cluster já tem — você não precisa
+# gerar nem colar nenhum certificado.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: backend
+  namespace: enzoblousa-dev
+spec:
+  to:
+    kind: Service
+    name: backend
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect   # requisição http:// é redirecionada pra https:// automaticamente
+  # "host" omitido de propósito: o OpenShift gera um hostname automático
+  # (algo como backend-enzoblousa-dev.apps.rm2.thpm.p1.openshiftapps.com).
+  # Confirme o valor real com: oc get route backend -o jsonpath='{.spec.host}'
