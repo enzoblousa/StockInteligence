@@ -14,6 +14,10 @@ conceito antes do comando.
 (confirme com `oc get route <nome> -o jsonpath='{.spec.host}'` — pode
 mudar se o namespace for recriado.)
 
+> Pra explorar o cluster no dia a dia (ver logs, entrar no banco, debugar
+> um pod que não sobe, etc.), ver o guia de comandos `oc`:
+> `comandos-oc.md`.
+
 ## Índice
 
 1. [Conceitos básicos](#1-conceitos-básicos)
