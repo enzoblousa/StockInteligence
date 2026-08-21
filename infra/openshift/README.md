@@ -9,10 +9,10 @@ conceito antes do comando.
 **URLs públicas em produção:**
 - Frontend: `https://frontend-enzoblousa-dev.apps.rm2.thpm.p1.openshiftapps.com`
 - Backend (API): `https://backend-enzoblousa-dev.apps.rm2.thpm.p1.openshiftapps.com`
+- notification-service (alertas): `https://notification-enzoblousa-dev.apps.rm2.thpm.p1.openshiftapps.com`
 
-(confirme com `oc get route backend -o jsonpath='{.spec.host}'` e
-`oc get route frontend -o jsonpath='{.spec.host}'` — pode mudar se o
-namespace for recriado.)
+(confirme com `oc get route <nome> -o jsonpath='{.spec.host}'` — pode
+mudar se o namespace for recriado.)
 
 ## Índice
 
@@ -77,22 +77,37 @@ como uma só) em vez da sua máquina.
                                                         ▼               ▼
                                                 ┌───────────────┐ ┌───────────┐
                                                 │Deployment       │ │Deployment  │
-                                                │postgresql        │ │kafka        │
-                                                │quay.io/sclorg/   │ │apache/kafka-│
-                                                │postgresql-16-c9s │ │native (KRaft│
-                                                │+ PVC (1Gi)        │ │nó único)     │
-                                                └───────────────┘ │sem PVC (§8)  │
-                                                                    └───────────┘
+                                                │postgresql        │ │kafka        │◀─┐
+                                                │quay.io/sclorg/   │ │apache/kafka-│  │
+                                                │postgresql-16-c9s │ │native (KRaft│  │
+                                                │+ PVC (1Gi)        │ │nó único)     │  │consome
+                                                └───────────────┘ │sem PVC (§8)  │  │(@Incoming)
+                                                                    └───────────┘  │
+                                                                                    │
+                                          ┌─────────────────────┐   ┌──────────────┴──┐
+  internet ──────────────────────────────▶│ Route "notification" │   │ Deployment        │
+  (o frontend chama esta URL direto,       │ (HTTPS, edge TLS)     │   │ "notification"     │
+   igual faz com a do backend)            └──────────┬──────────┘   │ Quarkus, sem banco │
+                                                       ▼               │ (alertas em          │
+                                          ┌─────────────────────┐   │  memória, ver §8)    │
+                                          │ Service "notification"│──▶│ replicas: 1 (ver     │
+                                          │      (8080)             │   │  infra/openshift/    │
+                                          └─────────────────────┘   │  19-notification-...) │
+                                                                       └────────────────────┘
 ```
 
-Nenhum dos quatro componentes usa um serviço "gerenciado" (tipo Amazon RDS
+Nenhum dos cinco componentes usa um serviço "gerenciado" (tipo Amazon RDS
 ou um CDN) — são todos containers simples rodando dentro do seu próprio
 namespace, porque o Developer Sandbox não permite instalar operadores nem
 provisionar serviços gerenciados (você não é administrador do cluster). O
-frontend fala com o backend **direto pela URL pública da Route**, não por
-um Service interno — o navegador de quem acessa o site é quem faz essa
-chamada, então precisa ser um endereço alcançável de fora do cluster (por
-isso `VITE_API_BASE_URL` aponta pra Route do backend, não pro Service).
+frontend fala com o backend **e** com o notification-service **direto
+pelas URLs públicas das Routes**, não por um Service interno — o
+navegador de quem acessa o site é quem faz essas chamadas, então precisam
+ser endereços alcançáveis de fora do cluster (por isso
+`VITE_API_BASE_URL`/`VITE_ALERTAS_API_BASE_URL` apontam pras Routes, não
+pros Services). Já o `notification-service` fala com o Kafka **por dentro
+do cluster** (`kafka:9092`, o Service interno) — ele não precisa de URL
+pública pra isso, só a Route serve pra expor `GET /alertas` ao navegador.
 
 ### Por que essas imagens específicas, e não as "óbvias"
 
@@ -208,6 +223,30 @@ oc rollout status deployment/frontend --timeout=180s
 #    passo 7 (rebuild do backend) e o passo 8 (rebuild do frontend).
 $frontendHost = oc get route frontend -o jsonpath='{.spec.host}'
 curl.exe -s -o NUL -w "status: %{http_code}`n" "https://$frontendHost/"
+
+# 10. Build e deploy do notification-service (consome o mesmo Kafka já
+#     implantado, sem infra nova de mensageria)
+cd notification-service
+./mvnw clean package -DskipTests
+cd ..
+oc apply -f infra/openshift/17-notification-imagestream.yaml
+oc apply -f infra/openshift/18-notification-buildconfig.yaml
+oc start-build notification --from-dir=notification-service --follow
+oc apply -f infra/openshift/19-notification-deployment.yaml
+oc apply -f infra/openshift/20-notification-service.yaml
+oc apply -f infra/openshift/21-notification-route.yaml
+oc rollout status deployment/notification --timeout=180s
+
+# 11. Validar isoladamente (repare que /alertas pode já vir com itens —
+#     o consumidor usa auto.offset.reset=earliest, então consome qualquer
+#     alerta que já estava no tópico antes dele existir)
+$notificationHost = oc get route notification -o jsonpath='{.spec.host}'
+curl.exe -s "https://$notificationHost/q/health/ready"
+curl.exe -s "https://$notificationHost/alertas"
+
+# 12. Se o host do passo 11 ficou diferente do previsto em
+#     frontend/.env.production (VITE_ALERTAS_API_BASE_URL), atualize e
+#     rebuilde o frontend (mesmos comandos do passo 8).
 ```
 
 ## 5. Como verificar que está funcionando
@@ -261,6 +300,25 @@ curl.exe -s -D - -o NUL -X OPTIONS "https://$backendHost/api/produtos" `
   Select-String "access-control-allow-origin"
 ```
 
+Pra conferir o pipeline de mensageria completo (backend publica →
+notification-service consome → frontend exibe), pelo terminal:
+
+```powershell
+$notificationHost = oc get route notification -o jsonpath='{.spec.host}'
+
+# Dispara uma saída que cruza o limiar (mesmo fluxo acima) e, alguns
+# segundos depois, confirma que o alerta chegou no notification-service:
+curl.exe -s "https://$notificationHost/alertas"
+```
+
+Ou visualmente: abra `https://<frontend>/produtos`, clique em **"Estoque"**
+na linha de um produto, registre uma saída que deixe a quantidade igual ou
+abaixo da mínima, depois abra **"Alertas"** (link no topo de "Produtos") —
+o alerta aparece na tabela, mais recente primeiro, tipicamente em menos de
+1 segundo depois de registrado.
+
+
+
 ## 6. Como atualizar depois de uma mudança de código
 
 Não existe deploy automático a partir do Git nesta configuração (ver
@@ -287,11 +345,24 @@ oc rollout restart deployment/frontend
 oc rollout status deployment/frontend --timeout=180s
 ```
 
-Se a mudança envolveu a URL de um contra o outro (ex.: recriou a Route do
-backend e o host mudou), atualize `frontend/.env.production` **e**
-`quarkus.http.cors.origins` em `application.properties`, e refaça os dois
-builds — nessa ordem, backend primeiro (senão o frontend novo aponta pra
-uma URL que o backend ainda não libera no CORS).
+**notification-service:**
+```powershell
+cd notification-service
+./mvnw clean package -DskipTests
+cd ..
+oc start-build notification --from-dir=notification-service --follow
+oc rollout restart deployment/notification
+oc rollout status deployment/notification --timeout=180s
+```
+
+Se a mudança envolveu a URL de um serviço contra o outro (ex.: recriou uma
+Route e o host mudou), atualize `frontend/.env.production` **e** o CORS do
+serviço correspondente (`quarkus.http.cors.origins`, tanto em
+`backend/src/main/resources/application.properties` quanto em
+`notification-service/src/main/resources/application.properties`), e
+refaça os builds afetados — sempre o(s) backend(s) primeiro, frontend por
+último (senão o frontend novo aponta pra uma URL que o backend ainda não
+libera no CORS).
 
 ## 7. Problemas reais encontrados (troubleshooting)
 
@@ -341,6 +412,24 @@ não hipóteses, coisas que realmente aconteceram:
   imprime instruções de uso e sai — nunca inicia o nginx de verdade.
   Corrigido adicionando `CMD ["/usr/libexec/s2i/run"]` explicitamente no
   final do `frontend/Dockerfile`.
+- **`ObjectMapperDeserializer<T>` (lado consumidor Kafka) não tem
+  construtor sem argumentos** — ao contrário do `ObjectMapperSerializer`
+  usado no lado produtor (backend), que tem. Corrigido criando uma
+  subclasse (`EstoqueBaixoAtingidoDeserializer`) chamando
+  `super(EstoqueBaixoAtingidoRecebido.class)` — confirmado por
+  decompilação do bytecode de `quarkus-kafka-client`, não por suposição.
+  Detalhe menos óbvio: isso exige `quarkus-rest-jackson` no classpath do
+  `notification-service` mesmo sem nenhum endpoint de escrita — é essa
+  extensão que registra o `ObjectMapper` gerenciado por CDI com
+  `JavaTimeModule`; sem ela, a desserialização de `OffsetDateTime` falha.
+- **Teste do consumidor Kafka falhava com "Expected size: 1 but was: 0"
+  mesmo com o conector `smallrye-in-memory` corretamente configurado** —
+  o processamento de um `@Incoming` passa pelo pipeline reativo (Mutiny) e
+  não é síncrono em relação ao `.send()` do teste: o assert rodava antes
+  do consumidor processar a mensagem. Corrigido com `Awaitility`
+  (`await().atMost(...).until(...)`) esperando o `AlertaStore` deixar de
+  estar vazio, em vez de assertar logo após o `send()` — mesma abordagem
+  recomendada pela documentação oficial do Quarkus para este cenário.
 
 ## 8. Limitações conhecidas
 
@@ -360,6 +449,13 @@ propósito pra não virarem surpresa:
   manualmente (§6) — não há gatilho automático a partir de `git push`.
   Automatizar isso via GitHub Actions é uma evolução natural, não
   implementada aqui.
-- **CORS do backend continua fixo em `http://localhost:5173`**
-  (`application.properties`) — só relevante se algum dia o frontend também
-  for publicado; não afeta o backend nem os testes via `curl`/Postman.
+- **Alertas do `notification-service` ficam em memória, não em banco** —
+  decisão deliberada (ver `notification-service/.../alerta/AlertaStore.java`):
+  somem quando o pod reciclar (mesma limitação já aceita pro Kafka acima).
+  O dado real — saldo de estoque — continua seguro no Postgres do backend;
+  alertas são notificação, não registro de negócio.
+- **`notification-service` não pode ter mais de 1 réplica** enquanto os
+  alertas forem armazenados em memória (`AlertaStore` é local ao
+  processo) — `GET /alertas` responderia de forma inconsistente
+  dependendo de qual pod atendeu a requisição. Documentado explicitamente
+  em `infra/openshift/19-notification-deployment.yaml`.

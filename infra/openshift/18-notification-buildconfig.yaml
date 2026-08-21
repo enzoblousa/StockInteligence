@@ -1,0 +1,21 @@
+# Mesmo padrão do backend (08-backend-buildconfig.yaml): Binary Build
+# (conteúdo vem do seu computador via
+# `oc start-build --from-dir=notification-service`, não de um repositório
+# Git) + estratégia Docker — o Dockerfile.jvm deste serviço (cópia do
+# backend, sem alterações) também espera target/quarkus-app/ já compilado.
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: notification
+  namespace: enzoblousa-dev
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: src/main/docker/Dockerfile.jvm
+  output:
+    to:
+      kind: ImageStreamTag
+      name: notification:latest

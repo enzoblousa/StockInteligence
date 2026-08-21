@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification
+  namespace: enzoblousa-dev
+spec:
+  # replicas: 1 não é um detalhe qualquer aqui — é uma restrição real do
+  # design. O AlertaStore (notification-service/.../alerta/AlertaStore.java)
+  # guarda os alertas em memória, local ao processo. Mais de uma réplica
+  # faria o GET /alertas responder de forma inconsistente, dependendo de
+  # qual pod atendeu a requisição (round-robin do Service). Não aumentar
+  # sem revisitar a decisão de armazenamento em memória.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification
+  template:
+    metadata:
+      labels:
+        app: notification
+    spec:
+      containers:
+        - name: notification
+          image: image-registry.openshift-image-registry.svc:5000/enzoblousa-dev/notification:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            # "kafka" é o mesmo Service já usado pelo backend
+            # (06-kafka-service.yaml) — nenhuma infra nova de mensageria,
+            # só mais um consumidor do mesmo tópico.
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+      # Sem "volumes"/PVC de propósito: alertas ficam em memória (decisão
+      # deliberada) — perder o histórico quando o pod reciclar é aceitável
+      # nesta demo, mesma limitação já aceita pro Kafka (README § 8).

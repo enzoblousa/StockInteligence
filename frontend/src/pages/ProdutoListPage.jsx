@@ -75,9 +75,14 @@ export default function ProdutoListPage() {
     <div className="container py-4">
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h1 className="h3 m-0">Produtos</h1>
-        <Link to="/produtos/novo" className="btn btn-primary">
-          Novo produto
-        </Link>
+        <div className="d-flex gap-2">
+          <Link to="/alertas" className="btn btn-outline-danger">
+            Alertas
+          </Link>
+          <Link to="/produtos/novo" className="btn btn-primary">
+            Novo produto
+          </Link>
+        </div>
       </div>
 
       <FiltroProdutos {...filtro} onFiltrar={setFiltro} />

@@ -1,0 +1,18 @@
+# Mesmo padrão das demais Routes (11-backend-route.yaml,
+# 16-frontend-route.yaml). O nome "notification" determina o host gerado:
+# notification-enzoblousa-dev.apps.rm2.thpm.p1.openshiftapps.com — já é o
+# valor usado em frontend/.env.production (VITE_ALERTAS_API_BASE_URL).
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: notification
+  namespace: enzoblousa-dev
+spec:
+  to:
+    kind: Service
+    name: notification
+  port:
+    targetPort: 8080
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -36,6 +36,9 @@ export default function ProdutoTable({ produtos, onInativar, onReativar }) {
               <Link to={`/produtos/${produto.id}/editar`} className="btn btn-sm btn-outline-primary">
                 Editar
               </Link>
+              <Link to={`/produtos/${produto.id}/estoque`} className="btn btn-sm btn-outline-info">
+                Estoque
+              </Link>
               {produto.status === 'ATIVO' ? (
                 <Button size="sm" variant="outline-warning" onClick={() => onInativar(produto)}>
                   Inativar

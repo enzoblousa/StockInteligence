@@ -1,0 +1,9 @@
+# Mesma ideia dos ImageStreams do backend e do frontend
+# (07-backend-imagestream.yaml, 12-frontend-imagestream.yaml): a
+# "prateleira" interna onde a imagem Docker construída pelo BuildConfig
+# vai ficar guardada.
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: notification
+  namespace: enzoblousa-dev

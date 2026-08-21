@@ -1,0 +1,10 @@
+*
+!target/*-runner
+!target/*-runner.jar
+!target/lib/*
+!target/quarkus-app/*
+# O Binary Build do OpenShift (`oc start-build --from-dir`) empacota este
+# diretório respeitando o .dockerignore antes de enviar ao cluster — sem
+# esta linha, o próprio Dockerfile.jvm seria excluído do pacote, já que a
+# regra "*" acima exclui tudo por padrão (infra/openshift/README.md).
+!src/main/docker/Dockerfile.jvm
