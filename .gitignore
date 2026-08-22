@@ -1,4 +1,4 @@
 # Cache do Quarkus CLI (gerado ao rodar `quarkus create app`/`quarkus` na raiz do repo)
 .quarkus/
-/memory
-/specs
+memory
+specs
