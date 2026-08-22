@@ -373,6 +373,30 @@ libera no CORS).
 Esses são os imprevistos genuínos que apareceram executando este guia —
 não hipóteses, coisas que realmente aconteceram:
 
+- **As URLs pararam de responder depois de ~36h sem uso — `oc get pods`
+  não mostrava nada, e os Deployments apareciam com `0/0` réplicas.**
+  Isso é o scale-to-zero por inatividade do Developer Sandbox (§8) — não
+  é perda de dados nem de configuração: PVC, Secrets, imagens e Routes
+  continuam intactos, só os pods pararam. Solução: religar cada
+  `Deployment` (Postgres e Kafka primeiro, pra estarem prontos quando o
+  backend/notification tentarem conectar):
+  ```powershell
+  oc scale deployment/postgresql --replicas=1
+  oc scale deployment/kafka --replicas=1
+  oc rollout status deployment/postgresql --timeout=180s
+  oc rollout status deployment/kafka --timeout=180s
+
+  oc scale deployment/backend --replicas=1
+  oc scale deployment/notification --replicas=1
+  oc scale deployment/frontend --replicas=1
+  oc rollout status deployment/backend --timeout=180s
+  oc rollout status deployment/notification --timeout=180s
+  oc rollout status deployment/frontend --timeout=180s
+  ```
+  Confirmado na prática: todos os produtos e saldos cadastrados antes do
+  scale-to-zero apareceram normalmente depois de religar — o PVC do
+  Postgres garante isso (o Kafka, sem PVC, teria perdido tópicos/offsets
+  nesse cenário, mas isso já era esperado, ver §8).
 - **`mvn clean` falhou com "Failed to delete backend-dev.jar"** — um
   processo `quarkus:dev` esquecido rodando (de uma sessão de teste
   anterior) estava com o arquivo aberto/travado. Solução: encontrar e

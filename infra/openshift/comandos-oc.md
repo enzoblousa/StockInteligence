@@ -222,6 +222,21 @@ oc edit deployment/backend                    # abre o YAML do recurso pra edita
 `GET /alertas` responder de forma inconsistente dependendo de qual pod
 atender a requisição.
 
+**Se as URLs pararam de responder depois de um tempo sem uso**, não é
+erro — o Developer Sandbox escala tudo pra 0 réplicas por inatividade
+(README.md §7). Religa assim (Postgres e Kafka primeiro):
+
+```powershell
+oc scale deployment/postgresql --replicas=1
+oc scale deployment/kafka --replicas=1
+oc rollout status deployment/postgresql --timeout=180s
+oc rollout status deployment/kafka --timeout=180s
+
+oc scale deployment/backend --replicas=1
+oc scale deployment/notification --replicas=1
+oc scale deployment/frontend --replicas=1
+```
+
 ## 13. Referência rápida (tabela resumo)
 
 | Quero... | Comando |
