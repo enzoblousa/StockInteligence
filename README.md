@@ -1,4 +1,4 @@
-'# StockInteligence
+# StockInteligence
 
 Sistema de gestão de estoque/inventário — backend Java/Quarkus + frontend
 React, construído do zero seguindo **Spec-Driven Development (SDD)**: cada
